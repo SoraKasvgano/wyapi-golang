@@ -1,0 +1,11 @@
+services:
+  wyapi-golang:
+    container_name: wyapi-golang
+    image: wyapi-golang:latest
+    ports:
+      - "8000:8000"
+    restart: unless-stopped
+    environment:
+      TZ: "Asia/Shanghai"
+    volumes:
+      - ./data:/data

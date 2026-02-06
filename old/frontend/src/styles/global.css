@@ -1,0 +1,166 @@
+/* 全局主题变量与基础样式 */
+
+/* CSS 基础设置 */
+* {
+  box-sizing: border-box;
+}
+html, body, #app {
+  height: 100%;
+}
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, "PingFang SC", "Microsoft YaHei", "Noto Sans", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  background: var(--app-bg);
+}
+
+:root {
+  --app-max-width: 1120px;
+  --app-radius: 10px;
+  --app-shadow: 0 6px 20px rgba(0, 0, 0, 0.06);
+  /* Element Plus 间距尺度（参考 8/12/16/20） */
+  --space-1: 8px;
+  --space-2: 12px;
+  --space-3: 16px;
+  --space-4: 20px;
+  /* 应用层统一间距与内边距（桌面默认） */
+  --app-padding-x: var(--space-3);
+  --app-gap: var(--space-3);
+  --app-header-bg: rgba(255, 255, 255, 0.45);
+  --app-bg: #f7f8fa;
+}
+
+.dark :root,
+.dark {
+  --app-header-bg: rgba(18, 18, 20, 0.55);
+  --app-bg: #0f1115;
+}
+
+/* 顶部吸顶与模糊背景 */
+.el-header.app-header {
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+  backdrop-filter: saturate(1.2) blur(10px);
+  -webkit-backdrop-filter: saturate(1.2) blur(10px);
+  background: var(--app-header-bg);
+  border-bottom: 1px solid var(--el-border-color-light);
+}
+
+/* 布局：容器占满视口，使底部固定 */
+.el-container.app-container {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 主内容最大宽度与内边距统一 */
+.el-main.app-main {
+  max-width: var(--app-max-width);
+  margin: 0 auto;
+  padding: var(--space-2) var(--space-3);
+  flex: 1;
+}
+
+/* 移动端变量与主内容间距统一（≤768px） */
+@media (max-width: 768px) {
+  :root { 
+    --app-padding-x: var(--space-2); 
+    --app-gap: var(--space-2); 
+  }
+  .el-main.app-main { 
+    padding: var(--space-2); 
+  }
+}
+
+/* 侧栏分隔与粘性（桌面端） */
+.el-aside.app-aside {
+  border-left: 1px solid var(--el-border-color-light);
+}
+
+/* 卡片统一圆角与阴影 */
+.el-card,
+.el-card.is-always-shadow,
+.el-card.is-hover-shadow {
+  border-radius: var(--app-radius);
+  box-shadow: var(--app-shadow);
+}
+
+/* 底部样式优化 */
+.el-footer.app-footer {
+  border-top: 1px solid var(--el-border-color-light);
+  background: var(--el-bg-color);
+}
+
+/* 交互过渡 */
+.el-button,
+.el-card,
+.el-link {
+  transition: all .2s ease;
+}
+.el-button:hover {
+  transform: translateY(-1px);
+}
+
+/* 移动端适配 */
+@media (max-width: 768px) {
+  .el-main.app-main {
+    padding: var(--space-2);
+  }
+}
+
+/* 滚动条样式统一（全局） */
+/* Firefox 原生滚动条 */
+html, body, #app {
+  scrollbar-width: thin; /* auto | thin | none */
+  scrollbar-color: var(--el-text-color-disabled) transparent; /* thumb | track */
+  scrollbar-gutter: stable; /* 保持布局稳定，避免出现/消失导致抖动 */
+}
+
+/* WebKit 原生滚动条（Chrome/Edge/新版本Safari） */
+/* 宽度与圆角 */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-thumb {
+  background-color: var(--el-text-color-disabled);
+  border-radius: var(--app-radius);
+  border: 2px solid transparent; /* 形成内边距效果，避免太粘手 */
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 悬停与活跃状态提升可见性 */
+@media (pointer: fine) {
+  *:hover::-webkit-scrollbar-thumb {
+    background-color: var(--el-color-primary-light-5);
+  }
+}
+
+/* 深色模式适配 */
+.dark *::-webkit-scrollbar-thumb {
+  background-color: var(--el-text-color-disabled);
+}
+.dark html, .dark body, .dark #app {
+  scrollbar-color: var(--el-text-color-disabled) transparent;
+}
+
+/* Element Plus 的 el-scrollbar 统一外观 */
+.el-scrollbar__bar.is-vertical {
+  width: 10px;
+}
+.el-scrollbar__bar.is-horizontal {
+  height: 10px;
+}
+.el-scrollbar__thumb {
+  background-color: var(--el-text-color-disabled);
+  border-radius: var(--app-radius);
+}
+.dark .el-scrollbar__thumb {
+  background-color: var(--el-text-color-disabled);
+}

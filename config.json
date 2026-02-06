@@ -1,0 +1,47 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8000,
+    "read_timeout_seconds": 15,
+    "write_timeout_seconds": 120,
+    "idle_timeout_seconds": 60,
+    "request_timeout_seconds": 30
+  },
+  "security": {
+    "api_token": "",
+    "require_token": false
+  },
+  "cookie": {
+    "file": "cookie.txt"
+  },
+  "download": {
+    "dir": "downloads",
+    "in_memory": true,
+    "max_file_size_mb": 500,
+    "max_concurrent": 3
+  },
+  "cors": {
+    "allowed_origins": [
+      "*"
+    ],
+    "allowed_methods": [
+      "GET",
+      "POST",
+      "OPTIONS"
+    ],
+    "allowed_headers": [
+      "Content-Type",
+      "Authorization",
+      "X-API-Token",
+      "X-API-Key"
+    ],
+    "exposed_headers": [
+      "X-Download-Message",
+      "X-Download-Filename"
+    ],
+    "allow_credentials": false
+  },
+  "log": {
+    "level": "info"
+  }
+}
