@@ -26,6 +26,7 @@ const (
 	searchAPI         = "https://music.163.com/api/cloudsearch/pc"
 	playlistDetailAPI = "https://music.163.com/api/v6/playlist/detail"
 	albumDetailAPI    = "https://music.163.com/api/v1/album/"
+	toplistAPI        = "https://music.163.com/api/toplist"
 )
 
 var defaultCookies = map[string]string{
@@ -260,6 +261,23 @@ func (c *Client) GetAlbumDetail(ctx context.Context, albumID int64, cookies map[
 	info.TrackCount = len(info.Tracks)
 
 	return info, nil
+}
+
+func (c *Client) GetToplist(ctx context.Context, cookies map[string]string) ([]ToplistInfo, error) {
+	body, err := c.get(ctx, toplistAPI, cookies)
+	if err != nil {
+		return nil, err
+	}
+
+	var resp ToplistResponse
+	if err := json.Unmarshal(body, &resp); err != nil {
+		return nil, err
+	}
+	if resp.Code != 200 {
+		return nil, errors.New("netease: toplist request failed")
+	}
+
+	return resp.List, nil
 }
 
 func (c *Client) GetPicURL(picID int64, size int) string {

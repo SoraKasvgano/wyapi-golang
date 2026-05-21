@@ -52,6 +52,15 @@
         }
       }
     },
+    "/api/key": {
+      "post": {
+        "summary": "新版兼容加密会话",
+        "description": "返回 keyId、keyToken 与 base64 AES-GCM key；新版兼容接口也支持直接明文 JSON。",
+        "responses": {
+          "200": { "description": "ok", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
     "/api/music/url": {
       "post": {
         "summary": "获取歌曲播放链接",
@@ -157,6 +166,121 @@
               }
             }
           }
+        },
+        "responses": {
+          "200": { "description": "ok", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/search": {
+      "post": {
+        "summary": "新版兼容搜索",
+        "description": "兼容 nextmusic 风格。请求可使用 {keyword, type, limit, offset}，也可使用 {keyId, keyToken, data} 加密包。",
+        "security": [{ "ApiToken": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "keyword": { "type": "string" },
+                  "limit": { "type": "integer" },
+                  "offset": { "type": "integer" },
+                  "keyId": { "type": "string" },
+                  "keyToken": { "type": "string" },
+                  "data": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "ok", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/getSongInfo": {
+      "post": {
+        "summary": "新版兼容歌曲详情",
+        "security": [{ "ApiToken": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "id": { "type": "string" }, "url": { "type": "string" }, "keyId": { "type": "string" }, "keyToken": { "type": "string" }, "data": { "type": "string" } } } } }
+        },
+        "responses": {
+          "200": { "description": "ok", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/getSongUrl": {
+      "post": {
+        "summary": "新版兼容歌曲播放链接",
+        "security": [{ "ApiToken": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "id": { "type": "string" }, "level": { "type": "string" }, "quality": { "type": "string" }, "keyId": { "type": "string" }, "keyToken": { "type": "string" }, "data": { "type": "string" } } } } }
+        },
+        "responses": {
+          "200": { "description": "ok", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/getSongLyric": {
+      "post": {
+        "summary": "新版兼容歌词",
+        "security": [{ "ApiToken": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "id": { "type": "string" }, "keyId": { "type": "string" }, "keyToken": { "type": "string" }, "data": { "type": "string" } } } } }
+        },
+        "responses": {
+          "200": { "description": "ok", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/getAlbum": {
+      "post": {
+        "summary": "新版兼容专辑详情",
+        "security": [{ "ApiToken": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "id": { "type": "string" }, "url": { "type": "string" }, "keyId": { "type": "string" }, "keyToken": { "type": "string" }, "data": { "type": "string" } } } } }
+        },
+        "responses": {
+          "200": { "description": "ok", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/playlist_trackall": {
+      "post": {
+        "summary": "新版兼容歌单全部歌曲",
+        "security": [{ "ApiToken": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "id": { "type": "string" }, "limit": { "type": "integer" }, "offset": { "type": "integer" }, "keyId": { "type": "string" }, "keyToken": { "type": "string" }, "data": { "type": "string" } } } } }
+        },
+        "responses": {
+          "200": { "description": "ok", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/toplist": {
+      "post": {
+        "summary": "新版兼容榜单列表",
+        "security": [{ "ApiToken": [] }, { "BearerAuth": [] }],
+        "responses": {
+          "200": { "description": "ok", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }
+        }
+      }
+    },
+    "/api/song/wiki": {
+      "post": {
+        "summary": "新版兼容歌曲发行信息",
+        "security": [{ "ApiToken": [] }, { "BearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": { "application/json": { "schema": { "type": "object", "properties": { "id": { "type": "string" }, "keyId": { "type": "string" }, "keyToken": { "type": "string" }, "data": { "type": "string" } } } } }
         },
         "responses": {
           "200": { "description": "ok", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/ApiResponse" } } } }

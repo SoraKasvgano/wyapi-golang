@@ -8,6 +8,7 @@ export const defaultSettings = {
   srtLyricsDownload: false, // 是否下载SRT歌词（否则下载LRC）
   layoutMode: 'single-column', // 布局模式: dual-column, single-column
   apiToken: '', // API Token（可选）
+  apiVersionLabel: '新版兼容接口', // 当前后端接口标识
   // 播放链接缓存设置
   enableUrlCache: false, // 是否启用播放链接缓存
   urlCacheTTLMinutes: 15, // 缓存时间（分钟） 

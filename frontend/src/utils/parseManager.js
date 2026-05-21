@@ -5,8 +5,7 @@ import { allTracks, totalTracks, currentPage, displayTracks } from './pagination
 import { settings } from './settingsManager.js'
 
 const getApiVersionLabel = () => {
-  const v = settings?.apiVersion
-  return v === 'API_V2' ? '接口2' : '接口1'
+  return settings?.apiVersionLabel || '新版兼容接口'
 }
 // 解析状态
 export const musicUrl = ref('')
@@ -77,17 +76,6 @@ export const parseMusic = async (selectedQuality) => {
     const qualityValue = typeof selectedQuality === 'string' ? selectedQuality : 'lossless'
     const result = await musicApi.parseMusicInfo(musicUrl.value, qualityValue)
     musicInfo.value = result
-
-    const getApiVersionLabel = () => {
-      const v = settings?.apiVersion
-      switch (v) {
-        case 'API_V2':
-          return '接口2'
-        case 'API_V1':
-        default:
-          return '接口1'
-      }
-    }
 
     ElNotification({
       title: '解析成功',

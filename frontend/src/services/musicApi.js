@@ -41,6 +41,72 @@ const normalizeId = (value) => {
   return String(value).trim()
 }
 
+const isOk = (payload) => payload && Number(payload.code) === 200
+
+const getErrorMessage = (payload, fallback) => {
+  return payload?.msg || payload?.message || fallback
+}
+
+const parseDurationToMs = (value) => {
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return value
+  }
+  const text = String(value || '').trim()
+  if (!text) return 0
+  if (/^\d+$/.test(text)) {
+    return Number(text)
+  }
+  const parts = text.split(':').map((item) => Number(item))
+  if (parts.some((item) => Number.isNaN(item))) return 0
+  if (parts.length === 2) {
+    return (parts[0] * 60 + parts[1]) * 1000
+  }
+  if (parts.length === 3) {
+    return ((parts[0] * 60 + parts[1]) * 60 + parts[2]) * 1000
+  }
+  return 0
+}
+
+const normalizeArtistNames = (value) => {
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (typeof item === 'string') return item
+        return item?.name || item?.nickname || ''
+      })
+      .filter(Boolean)
+  }
+  if (typeof value === 'string') {
+    return value.split(/[\/,，]/).map((item) => item.trim()).filter(Boolean)
+  }
+  return []
+}
+
+const normalizeCreator = (value, fallback = '') => {
+  if (typeof value === 'string') return value
+  if (value && typeof value === 'object') {
+    return value.nickname || value.name || value.nick || fallback
+  }
+  return fallback
+}
+
+const normalizeTrack = (track = {}) => {
+  const artistNames = normalizeArtistNames(track.artists || track.artist || track.singer || track.ar)
+  const albumName = typeof track.album === 'string' ? track.album : track.album?.name || track.al?.name || ''
+  const picUrl = track.picUrl || track.picimg || track.cover || track.al?.picUrl || track.album?.picUrl || ''
+  return {
+    ...track,
+    id: track.id,
+    name: track.name || '',
+    artist: track.artist || track.singer || artistNames.join('/'),
+    singer: track.singer || track.artist || artistNames.join('/'),
+    artists: typeof track.artists === 'string' ? track.artists : artistNames.join('/'),
+    album: albumName,
+    picUrl,
+    duration: parseDurationToMs(track.duration || track.dt)
+  }
+}
+
 // API 基础 URL：默认使用当前站点
 const getApiBase = () => {
   try {
@@ -373,33 +439,33 @@ const setCachedUrlData = (id, quality, data) => {
 // 获取音乐播放链接
 export const getMusicUrl = async (musicId, quality = 'lossless', options = {}) => {
   const { bypassCache = false, updateCache = true } = options
-    // 先查缓存，避免每次都请求接口（可通过 bypassCache 跳过）
-    if (settings?.enableUrlCache && !bypassCache) {
-      const cached = getCachedUrlData(musicId, quality)
-      if (cached && cached.url) {
-        return cached
-      }
+  // 先查缓存，避免每次都请求接口（可通过 bypassCache 跳过）
+  if (settings?.enableUrlCache && !bypassCache) {
+    const cached = getCachedUrlData(musicId, quality)
+    if (cached && cached.url) {
+      return cached
     }
+  }
 
-    const response = await fetchApi(buildApiUrl(`api/music/url`), {
-      id: normalizeId(musicId),
-      level: quality
-    })
-    
-    if (response.data.code !== 200) {
-      throw new Error(response.data.msg || '获取音乐链接失败')
-    }
+  const response = await fetchApi(buildApiUrl(`api/getSongUrl`), {
+    id: normalizeId(musicId),
+    level: quality
+  })
 
-    const urlData = response.data.data[0]
-    if (!urlData || urlData.length === 0) {
-      throw new Error('该音质的音乐链接不可用')
-    }
-    // 写入缓存（可通过 updateCache 控制是否更新缓存）
-    if (settings?.enableUrlCache && updateCache) {
-      setCachedUrlData(musicId, quality, urlData)
-    }
+  if (!isOk(response.data)) {
+    throw new Error(getErrorMessage(response.data, '获取音乐链接失败'))
+  }
 
-    return urlData
+  const urlData = Array.isArray(response.data.data) ? response.data.data[0] : response.data.data
+  if (!urlData || !urlData.url) {
+    throw new Error('该音质的音乐链接不可用')
+  }
+  // 写入缓存（可通过 updateCache 控制是否更新缓存）
+  if (settings?.enableUrlCache && updateCache) {
+    setCachedUrlData(musicId, quality, urlData)
+  }
+
+  return urlData
 }
 
 // 解析音乐信息
@@ -411,19 +477,18 @@ export const parseMusicInfo = async (url, quality = 'lossless') => {
     }
 
     // 获取歌曲基本信息
-    const detailResponse = await fetchApi(buildApiUrl(`api/music/detail`), {
+    const detailResponse = await fetchApi(buildApiUrl(`api/getSongInfo`), {
       id: normalizeId(musicId)
     })
     
-    if (detailResponse.data.code !== 200) {
-      throw new Error(detailResponse.data.msg || '获取歌曲信息失败')
+    if (!isOk(detailResponse.data)) {
+      throw new Error(getErrorMessage(detailResponse.data, '获取歌曲信息失败'))
     }
 
     const songData = detailResponse.data.data
     
     // 转换时长格式
-    const durationParts = songData.duration.split(':')
-    const durationMs = (parseInt(durationParts[0]) * 60 + parseInt(durationParts[1])) * 1000
+    const durationMs = parseDurationToMs(songData.duration)
 
     const preferredQuality = normalizeQuality(quality)
 
@@ -514,6 +579,20 @@ export const parseMusicInfo = async (url, quality = 'lossless') => {
       void 0
     }
 
+    // 尽量补充发行日期，供下载时写入元数据
+    try {
+      const wikiData = await getSongWiki(songData.id)
+      if (wikiData && wikiData.publishTime) {
+        const date = new Date(Number(wikiData.publishTime))
+        if (!Number.isNaN(date.getTime())) {
+          musicInfo.publishTime = wikiData.publishTime
+          musicInfo.year = String(date.getFullYear())
+        }
+      }
+    } catch {
+      void 0
+    }
+
     return musicInfo
 
   } catch (error) {
@@ -547,12 +626,12 @@ export const getLyrics = async (musicId) => {
       musicId = String(musicId)
     }
     
-    const response = await fetchApi(buildApiUrl(`api/music/lyric`), {
+    const response = await fetchApi(buildApiUrl(`api/getSongLyric`), {
       id: normalizeId(musicId)
     })
     
-    if (response.data.code !== 200) {
-      throw new Error(response.data.msg || '获取歌词失败')
+    if (!isOk(response.data)) {
+      throw new Error(getErrorMessage(response.data, '获取歌词失败'))
     }
 
     const lyricsData = response.data.data
@@ -570,6 +649,22 @@ export const getLyrics = async (musicId) => {
       romalrc: '',
       klyric: ''
     }
+  }
+}
+
+export const getSongWiki = async (musicId) => {
+  try {
+    const response = await fetchApi(buildApiUrl(`api/song/wiki`), {
+      id: normalizeId(musicId)
+    })
+
+    if (!isOk(response.data)) {
+      throw new Error(getErrorMessage(response.data, '获取歌曲发行信息失败'))
+    }
+
+    return response.data.data || {}
+  } catch {
+    return {}
   }
 }
 
@@ -632,23 +727,55 @@ export const getPlaylistDetail = async (url) => {
     if (!musicId) {
       throw new Error('无法从链接中提取歌单ID')
     }
-    // 从原始链接中解析页码参数 p（如 ?p=2 或 &p=2），未提供则不传递 page 字段
-    const pageMatch = String(url).match(/[?&]p=(\d+)/)
-    const requestData = pageMatch
-      ? { id: normalizeId(musicId), page: parseInt(pageMatch[1], 10) }
-      : { id: normalizeId(musicId) }
-    
-    const response = await fetchApi(buildApiUrl(`api/music/playlist`), requestData)
-    
-    if (response.data && response.data.code === 200) {
-      return {
-        success: true,
-        data: response.data.data
+
+    const pageSize = 500
+    let offset = 0
+    let firstPage = null
+    const allTracks = []
+
+    for (;;) {
+      const response = await fetchApi(buildApiUrl(`api/playlist_trackall`), {
+        id: normalizeId(musicId),
+        limit: pageSize,
+        offset
+      })
+
+      if (!isOk(response.data)) {
+        return {
+          success: false,
+          error: getErrorMessage(response.data, '获取歌单信息失败')
+        }
       }
-    } else {
-      return {
-        success: false,
-        error: response.data?.msg || '获取歌单信息失败'
+
+      const data = response.data.data || {}
+      if (!firstPage) {
+        firstPage = data
+      }
+      const tracks = Array.isArray(data.tracks)
+        ? data.tracks
+        : Array.isArray(data.songs)
+          ? data.songs
+          : Array.isArray(data.list)
+            ? data.list
+            : []
+      allTracks.push(...tracks)
+
+      if (!data.more || tracks.length === 0) {
+        break
+      }
+      offset += tracks.length
+    }
+
+    const data = firstPage || {}
+    return {
+      success: true,
+      data: {
+        ...data,
+        creator: normalizeCreator(data.creator, data.creatorName),
+        picUrl: data.picUrl || data.coverImgUrl || '',
+        coverImgUrl: data.coverImgUrl || data.picUrl || '',
+        trackCount: data.trackCount || allTracks.length,
+        tracks: allTracks.map(normalizeTrack)
       }
     }
   } catch (error) {
@@ -666,10 +793,31 @@ export const getPlaylistDetail = async (url) => {
         error: 'API服务器无法连接，请检查网络连接或稍后重试'
       }
     }
-    
+
     return {
       success: false,
       error: `网络请求失败: ${error.message || '未知错误'}，请稍后重试`
+    }
+  }
+}
+
+export const getToplists = async () => {
+  try {
+    const response = await fetchApi(buildApiUrl(`api/toplist`), {})
+    if (isOk(response.data)) {
+      return {
+        success: true,
+        data: Array.isArray(response.data.data) ? response.data.data : []
+      }
+    }
+    return {
+      success: false,
+      error: getErrorMessage(response.data, '获取榜单列表失败')
+    }
+  } catch (error) {
+    return {
+      success: false,
+      error: error.message || '获取榜单列表失败'
     }
   }
 }
@@ -684,17 +832,32 @@ export const getAlbumDetail = async (url) => {
     
     const requestData = { id: normalizeId(albumId) }
     
-    const response = await fetchApi(buildApiUrl(`api/music/album`), requestData)
+    const response = await fetchApi(buildApiUrl(`api/getAlbum`), requestData)
     
     if (response.data && response.data.code === 200) {
+      const data = response.data.data || {}
+      const tracks = Array.isArray(data.tracks)
+        ? data.tracks
+        : Array.isArray(data.songs)
+          ? data.songs
+          : Array.isArray(data.list)
+            ? data.list
+            : []
       return {
         success: true,
-        data: response.data.data
+        data: {
+          ...data,
+          artist: normalizeCreator(data.artist),
+          picUrl: data.picUrl || data.coverImgUrl || '',
+          coverImgUrl: data.coverImgUrl || data.picUrl || '',
+          trackCount: data.trackCount || tracks.length,
+          tracks: tracks.map(normalizeTrack)
+        }
       }
     } else {
       return {
         success: false,
-        error: response.data?.msg || '获取专辑信息失败'
+        error: getErrorMessage(response.data, '获取专辑信息失败')
       }
     }
   } catch (error) {
@@ -708,7 +871,7 @@ export const getAlbumDetail = async (url) => {
 // 获取单首歌曲信息
 export const getMusicInfo = async (musicId) => {
   try {
-    const endpoint = buildApiUrl(`api/getMusicInfo`)
+    const endpoint = buildApiUrl(`api/getSongInfo`)
     const response = await fetchApi(endpoint, {
       id: normalizeId(musicId)
     })
@@ -721,7 +884,7 @@ export const getMusicInfo = async (musicId) => {
     } else {
       return {
         success: false,
-        error: response.data?.msg || '获取歌曲信息失败'
+        error: getErrorMessage(response.data, '获取歌曲信息失败')
       }
     }
   } catch {
@@ -735,22 +898,21 @@ export const getMusicInfo = async (musicId) => {
 // 搜索音乐
 export const searchMusic = async (keyword) => {
   try {
-    const response = await fetchApi(buildApiUrl(`netease/search`), {
-      keywords: keyword,
-      limit: 20
+    const response = await fetchApi(buildApiUrl(`api/search`), {
+      keyword,
+      type: 1,
+      limit: 20,
+      offset: 0
     })
     
-    if (response.data && response.data.result && response.data.result.songs) {
+    if (isOk(response.data) && response.data.data) {
+      const songs = Array.isArray(response.data.data)
+        ? response.data.data
+        : response.data.data.songs || response.data.data.list || []
       return {
         success: true,
         data: {
-          songs: response.data.result.songs.map(song => ({
-            id: song.id,
-            name: song.name,
-            artists: song.artists || [],
-            album: song.album || {},
-            duration: song.duration || 0
-          }))
+          songs: songs.map(normalizeTrack)
         }
       }
     } else {
@@ -778,8 +940,10 @@ export default {
   extractAlbumId,
   parseMusicInfo,
   getLyrics,
+  getSongWiki,
   downloadMusic,
   getPlaylistDetail,
+  getToplists,
   getAlbumDetail,
   getMusicInfo,
   searchMusic

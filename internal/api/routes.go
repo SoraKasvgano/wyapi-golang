@@ -22,6 +22,7 @@ func NewRouter(handler *Handler, cfg *config.Config, staticHandler http.Handler,
 
 	r.Get("/health", handler.Health)
 	r.Get("/openapi.json", handler.OpenAPI)
+	r.Post("/api/key", handler.CompatKey)
 	if swaggerHandler != nil {
 		r.Get("/swagger/*", func(w http.ResponseWriter, r *http.Request) {
 			swaggerHandler.ServeHTTP(w, r)
@@ -73,6 +74,23 @@ func NewRouter(handler *Handler, cfg *config.Config, staticHandler http.Handler,
 
 		api.MethodFunc(http.MethodGet, "/netease/search", handler.NeteaseSearch)
 		api.MethodFunc(http.MethodPost, "/netease/search", handler.NeteaseSearch)
+
+		api.MethodFunc(http.MethodGet, "/api/search", handler.CompatSearch)
+		api.MethodFunc(http.MethodPost, "/api/search", handler.CompatSearch)
+		api.MethodFunc(http.MethodGet, "/api/getSongInfo", handler.CompatSongInfo)
+		api.MethodFunc(http.MethodPost, "/api/getSongInfo", handler.CompatSongInfo)
+		api.MethodFunc(http.MethodGet, "/api/getSongUrl", handler.CompatSongURL)
+		api.MethodFunc(http.MethodPost, "/api/getSongUrl", handler.CompatSongURL)
+		api.MethodFunc(http.MethodGet, "/api/getSongLyric", handler.CompatSongLyric)
+		api.MethodFunc(http.MethodPost, "/api/getSongLyric", handler.CompatSongLyric)
+		api.MethodFunc(http.MethodGet, "/api/getAlbum", handler.CompatAlbum)
+		api.MethodFunc(http.MethodPost, "/api/getAlbum", handler.CompatAlbum)
+		api.MethodFunc(http.MethodGet, "/api/playlist_trackall", handler.CompatPlaylistTrackAll)
+		api.MethodFunc(http.MethodPost, "/api/playlist_trackall", handler.CompatPlaylistTrackAll)
+		api.MethodFunc(http.MethodGet, "/api/toplist", handler.CompatToplist)
+		api.MethodFunc(http.MethodPost, "/api/toplist", handler.CompatToplist)
+		api.MethodFunc(http.MethodGet, "/api/song/wiki", handler.CompatSongWiki)
+		api.MethodFunc(http.MethodPost, "/api/song/wiki", handler.CompatSongWiki)
 	})
 
 	if staticHandler != nil {

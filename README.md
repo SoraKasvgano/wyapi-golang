@@ -18,6 +18,7 @@ Go 版本的网易云音乐解析服务，前后端分离但可通过 `embed` �
 - 临时文件支持内存模式（可配置落盘）
 - Swagger UI 离线文档：`/swagger/index.html`
 - 兼容旧接口与新版前端接口
+- 兼容 `nextmusic` 风格新版接口（支持明文 JSON，也支持 `/api/key` 会话加密请求）
 
 ## 目录结构
 
@@ -131,6 +132,30 @@ POST /api/music/playlist
 POST /api/music/album
 POST /netease/search
 ```
+
+新版兼容接口：
+
+```
+POST /api/key
+POST /api/search
+POST /api/getSongInfo
+POST /api/getSongUrl
+POST /api/getSongLyric
+POST /api/getAlbum
+POST /api/playlist_trackall
+POST /api/toplist
+POST /api/song/wiki
+```
+
+新版兼容接口默认可直接使用明文 JSON，例如：
+
+```
+curl -X POST http://127.0.0.1:8000/api/getSongInfo \
+  -H "Content-Type: application/json" \
+  -d "{\"id\":\"476899057\"}"
+```
+
+如果前端使用 `keyId/keyToken/data` 包装请求，可先调用 `/api/key` 获取 AES-GCM 会话密钥；后端会自动解密 `data` 后按同一套接口处理。
 
 示例：
 

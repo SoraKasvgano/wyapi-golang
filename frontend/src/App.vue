@@ -702,7 +702,7 @@ const computedPlaylistInfo = computed(() => {
             
               <div class="build-info">
               <el-text size="small" type="info">
-        构建时间: 2025/11/29 | 版本: v1.1.9
+        构建时间: 2026/05/21 | 版本: v1.2.0
               </el-text>
             </div>
           </div>

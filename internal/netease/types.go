@@ -41,12 +41,16 @@ type SongDetailResponse struct {
 }
 
 type SongDetailSong struct {
-	ID   int64    `json:"id"`
-	Name string   `json:"name"`
-	Ar   []Artist `json:"ar"`
-	Al   Album    `json:"al"`
-	Dt   int64    `json:"dt"`
-	No   int      `json:"no"`
+	ID          int64    `json:"id"`
+	Name        string   `json:"name"`
+	Ar          []Artist `json:"ar"`
+	Al          Album    `json:"al"`
+	Dt          int64    `json:"dt"`
+	No          int      `json:"no"`
+	Fee         int      `json:"fee"`
+	Copyright   int      `json:"copyright"`
+	CopyrightID int64    `json:"copyrightId"`
+	PublishTime int64    `json:"publishTime"`
 }
 
 type Artist struct {
@@ -54,9 +58,11 @@ type Artist struct {
 }
 
 type Album struct {
-	Name   string `json:"name"`
-	PicURL string `json:"picUrl"`
-	Pic    int64  `json:"pic"`
+	ID          int64  `json:"id"`
+	Name        string `json:"name"`
+	PicURL      string `json:"picUrl"`
+	Pic         int64  `json:"pic"`
+	PublishTime int64  `json:"publishTime"`
 }
 
 type LyricResponse struct {
@@ -77,15 +83,19 @@ type SearchResponse struct {
 }
 
 type SearchResult struct {
-	Songs []SearchSong `json:"songs"`
+	Songs     []SearchSong `json:"songs"`
+	SongCount int          `json:"songCount"`
 }
 
 type SearchSong struct {
-	ID   int64    `json:"id"`
-	Name string   `json:"name"`
-	Ar   []Artist `json:"ar"`
-	Al   Album    `json:"al"`
-	Dt   int64    `json:"dt"`
+	ID          int64    `json:"id"`
+	Name        string   `json:"name"`
+	Ar          []Artist `json:"ar"`
+	Al          Album    `json:"al"`
+	Dt          int64    `json:"dt"`
+	Fee         int      `json:"fee"`
+	Copyright   int      `json:"copyright"`
+	CopyrightID int64    `json:"copyrightId"`
 }
 
 type PlaylistDetailResponse struct {
@@ -156,4 +166,18 @@ type AlbumInfo struct {
 	Description string      `json:"description"`
 	TrackCount  int         `json:"trackCount"`
 	Tracks      []TrackInfo `json:"tracks"`
+}
+
+type ToplistResponse struct {
+	Code int           `json:"code"`
+	List []ToplistInfo `json:"list"`
+}
+
+type ToplistInfo struct {
+	ID              int64  `json:"id"`
+	Name            string `json:"name"`
+	UpdateFrequency string `json:"updateFrequency"`
+	CoverImgURL     string `json:"coverImgUrl,omitempty"`
+	TrackCount      int    `json:"trackCount,omitempty"`
+	Description     string `json:"description,omitempty"`
 }

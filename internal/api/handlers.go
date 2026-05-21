@@ -30,20 +30,22 @@ var (
 )
 
 type Handler struct {
-	cfg        *config.Config
-	netease    *netease.Client
-	cookies    *cookie.Manager
-	downloader *downloader.Downloader
-	openAPI    []byte
+	cfg            *config.Config
+	netease        *netease.Client
+	cookies        *cookie.Manager
+	downloader     *downloader.Downloader
+	openAPI        []byte
+	cryptoSessions *CryptoSessionStore
 }
 
 func NewHandler(cfg *config.Config, neteaseClient *netease.Client, cookieManager *cookie.Manager, downloader *downloader.Downloader, openAPI []byte) *Handler {
 	return &Handler{
-		cfg:        cfg,
-		netease:    neteaseClient,
-		cookies:    cookieManager,
-		downloader: downloader,
-		openAPI:    openAPI,
+		cfg:            cfg,
+		netease:        neteaseClient,
+		cookies:        cookieManager,
+		downloader:     downloader,
+		openAPI:        openAPI,
+		cryptoSessions: NewCryptoSessionStore(10 * time.Minute),
 	}
 }
 
@@ -69,18 +71,27 @@ func (h *Handler) APIInfo(w http.ResponseWriter, r *http.Request) {
 		"version":     "2.0.0",
 		"description": "提供网易云音乐相关API服务",
 		"endpoints": map[string]string{
-			"/health":             "GET - 健康检查",
-			"/song":               "GET/POST - 获取歌曲信息",
-			"/search":             "GET/POST - 搜索音乐",
-			"/playlist":           "GET/POST - 获取歌单详情",
-			"/album":              "GET/POST - 获取专辑详情",
-			"/download":           "GET/POST - 下载音乐",
-			"/api/info":           "GET - API信息",
-			"/api/music/url":      "GET/POST - 获取歌曲链接",
-			"/api/music/detail":   "GET/POST - 获取歌曲详情",
-			"/api/music/lyric":    "GET/POST - 获取歌词",
-			"/api/music/playlist": "GET/POST - 获取歌单详情",
-			"/api/music/album":    "GET/POST - 获取专辑详情",
+			"/health":                "GET - 健康检查",
+			"/song":                  "GET/POST - 获取歌曲信息",
+			"/search":                "GET/POST - 搜索音乐",
+			"/playlist":              "GET/POST - 获取歌单详情",
+			"/album":                 "GET/POST - 获取专辑详情",
+			"/download":              "GET/POST - 下载音乐",
+			"/api/info":              "GET - API信息",
+			"/api/music/url":         "GET/POST - 获取歌曲链接",
+			"/api/music/detail":      "GET/POST - 获取歌曲详情",
+			"/api/music/lyric":       "GET/POST - 获取歌词",
+			"/api/music/playlist":    "GET/POST - 获取歌单详情",
+			"/api/music/album":       "GET/POST - 获取专辑详情",
+			"/api/key":               "POST - 新版兼容加密会话",
+			"/api/search":            "GET/POST - 新版兼容搜索",
+			"/api/getSongInfo":       "GET/POST - 新版兼容歌曲详情",
+			"/api/getSongUrl":        "GET/POST - 新版兼容歌曲链接",
+			"/api/getSongLyric":      "GET/POST - 新版兼容歌词",
+			"/api/getAlbum":          "GET/POST - 新版兼容专辑详情",
+			"/api/playlist_trackall": "GET/POST - 新版兼容歌单全部歌曲",
+			"/api/toplist":           "GET/POST - 新版兼容榜单列表",
+			"/api/song/wiki":         "GET/POST - 新版兼容歌曲发行信息",
 		},
 		"supported_qualities": []string{
 			"standard", "exhigh", "lossless", "hires", "sky", "jyeffect", "jymaster", "dolby",
@@ -88,6 +99,15 @@ func (h *Handler) APIInfo(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.Success(w, data, "API信息获取成功")
+}
+
+func (h *Handler) CompatKey(w http.ResponseWriter, r *http.Request) {
+	session, err := h.cryptoSessions.Create()
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, "创建加密会话失败")
+		return
+	}
+	response.Success(w, session, "success")
 }
 
 func (h *Handler) OpenAPI(w http.ResponseWriter, r *http.Request) {
@@ -356,6 +376,320 @@ func (h *Handler) NeteaseSearch(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
+func (h *Handler) CompatSearch(w http.ResponseWriter, r *http.Request) {
+	data, err := h.parseCompatRequestData(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	keyword := firstNonEmpty(data, "keyword", "keywords", "q")
+	if keyword == "" {
+		response.Error(w, http.StatusBadRequest, "关键词不能为空")
+		return
+	}
+	limit := parseInt(firstNonEmpty(data, "limit"), 30)
+
+	cookies := h.loadCookies()
+	searchResp, err := h.netease.Search(r.Context(), keyword, limit, cookies)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	songs := make([]map[string]interface{}, 0, len(searchResp.Result.Songs))
+	for _, song := range searchResp.Result.Songs {
+		songs = append(songs, h.compatSearchSong(song))
+	}
+
+	response.Success(w, map[string]interface{}{
+		"songs":     songs,
+		"songCount": searchResp.Result.SongCount,
+	}, "success")
+}
+
+func (h *Handler) CompatSongInfo(w http.ResponseWriter, r *http.Request) {
+	data, err := h.parseCompatRequestData(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	idInput := firstNonEmpty(data, "id", "ids", "url")
+	if idInput == "" {
+		response.Error(w, http.StatusBadRequest, "缺少歌曲ID")
+		return
+	}
+
+	songID, err := h.extractID(r.Context(), idInput)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	resp, err := h.netease.GetSongDetail(r.Context(), songID)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if resp == nil || len(resp.Songs) == 0 {
+		response.Error(w, http.StatusNotFound, "未找到歌曲信息")
+		return
+	}
+
+	response.Success(w, h.compatSongDetail(resp.Songs[0]), "success")
+}
+
+func (h *Handler) CompatSongURL(w http.ResponseWriter, r *http.Request) {
+	data, err := h.parseCompatRequestData(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	idInput := firstNonEmpty(data, "id", "ids", "url")
+	if idInput == "" {
+		response.Error(w, http.StatusBadRequest, "缺少歌曲ID")
+		return
+	}
+
+	quality := firstNonEmpty(data, "level", "quality")
+	if quality == "" {
+		quality = "lossless"
+	}
+
+	songID, err := h.extractID(r.Context(), idInput)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	cookies := h.loadCookies()
+	resp, err := h.netease.GetSongURL(r.Context(), songID, quality, cookies)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if resp == nil || len(resp.Data) == 0 || resp.Data[0].URL == "" {
+		response.Error(w, http.StatusNotFound, "无法获取该歌曲的播放链接")
+		return
+	}
+
+	urlData := resp.Data[0]
+	response.Success(w, map[string]interface{}{
+		"id":    urlData.ID,
+		"url":   urlData.URL,
+		"br":    urlData.Br,
+		"level": urlData.Level,
+		"size":  urlData.Size,
+		"type":  urlData.Type,
+		"time":  compatNow(),
+	}, "success")
+}
+
+func (h *Handler) CompatSongLyric(w http.ResponseWriter, r *http.Request) {
+	data, err := h.parseCompatRequestData(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	idInput := firstNonEmpty(data, "id", "ids", "url")
+	if idInput == "" {
+		response.Error(w, http.StatusBadRequest, "缺少歌曲ID")
+		return
+	}
+
+	songID, err := h.extractID(r.Context(), idInput)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	cookies := h.loadCookies()
+	resp, err := h.netease.GetLyrics(r.Context(), songID, cookies)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	dataOut := map[string]string{
+		"lrc":     safeLyric(resp),
+		"tlyric":  safeTLyric(resp),
+		"romalrc": "",
+		"klyric":  "",
+		"time":    compatNow(),
+	}
+	if resp != nil {
+		dataOut["romalrc"] = resp.Romalrc.Lyric
+		dataOut["klyric"] = resp.Klyric.Lyric
+	}
+
+	response.Success(w, dataOut, "success")
+}
+
+func (h *Handler) CompatAlbum(w http.ResponseWriter, r *http.Request) {
+	data, err := h.parseCompatRequestData(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	idInput := firstNonEmpty(data, "id", "url")
+	if idInput == "" {
+		response.Error(w, http.StatusBadRequest, "缺少专辑ID")
+		return
+	}
+
+	albumID, err := h.extractID(r.Context(), idInput)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	cookies := h.loadCookies()
+	detail, err := h.netease.GetAlbumDetail(r.Context(), albumID, cookies)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(w, map[string]interface{}{
+		"id":          detail.ID,
+		"name":        detail.Name,
+		"title":       detail.Name,
+		"coverImgUrl": detail.CoverImgURL,
+		"picUrl":      detail.PicURL,
+		"artist":      detail.Artist,
+		"publishTime": detail.PublishTime,
+		"description": detail.Description,
+		"trackCount":  detail.TrackCount,
+		"tracks":      detail.Tracks,
+		"songs":       detail.Tracks,
+	}, "success")
+}
+
+func (h *Handler) CompatPlaylistTrackAll(w http.ResponseWriter, r *http.Request) {
+	data, err := h.parseCompatRequestData(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	idInput := firstNonEmpty(data, "id", "url")
+	if idInput == "" {
+		response.Error(w, http.StatusBadRequest, "缺少歌单ID")
+		return
+	}
+
+	playlistID, err := h.extractID(r.Context(), idInput)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	limit := parseInt(firstNonEmpty(data, "limit"), 500)
+	offset := parseInt(firstNonEmpty(data, "offset"), 0)
+	if limit <= 0 {
+		limit = 500
+	}
+	if offset < 0 {
+		offset = 0
+	}
+
+	cookies := h.loadCookies()
+	detail, err := h.netease.GetPlaylistDetail(r.Context(), playlistID, cookies)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	tracks := detail.Tracks
+	if offset < len(tracks) {
+		end := offset + limit
+		if end > len(tracks) {
+			end = len(tracks)
+		}
+		tracks = tracks[offset:end]
+	} else {
+		tracks = []netease.TrackInfo{}
+	}
+
+	response.Success(w, map[string]interface{}{
+		"id":          detail.ID,
+		"name":        detail.Name,
+		"title":       detail.Name,
+		"coverImgUrl": detail.CoverImgURL,
+		"picUrl":      detail.PicURL,
+		"creator": map[string]string{
+			"nickname": detail.Creator,
+			"name":     detail.Creator,
+		},
+		"creatorName": detail.Creator,
+		"description": detail.Description,
+		"trackCount":  detail.TrackCount,
+		"tracks":      tracks,
+		"songs":       tracks,
+		"list":        tracks,
+		"more":        offset+len(tracks) < detail.TrackCount,
+		"offset":      offset,
+		"limit":       limit,
+	}, "success")
+}
+
+func (h *Handler) CompatToplist(w http.ResponseWriter, r *http.Request) {
+	cookies := h.loadCookies()
+	list, err := h.netease.GetToplist(r.Context(), cookies)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	response.Success(w, list, "success")
+}
+
+func (h *Handler) CompatSongWiki(w http.ResponseWriter, r *http.Request) {
+	data, err := h.parseCompatRequestData(r)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	idInput := firstNonEmpty(data, "id", "ids", "url")
+	if idInput == "" {
+		response.Error(w, http.StatusBadRequest, "缺少歌曲ID")
+		return
+	}
+
+	songID, err := h.extractID(r.Context(), idInput)
+	if err != nil {
+		response.Error(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	detailResp, err := h.netease.GetSongDetail(r.Context(), songID)
+	if err != nil {
+		response.Error(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if detailResp == nil || len(detailResp.Songs) == 0 {
+		response.Error(w, http.StatusNotFound, "未找到歌曲信息")
+		return
+	}
+
+	song := detailResp.Songs[0]
+	publishTime := firstPositiveInt64(song.PublishTime, song.Al.PublishTime)
+	if publishTime == 0 && song.Al.ID > 0 {
+		if album, albumErr := h.netease.GetAlbumDetail(r.Context(), song.Al.ID, h.loadCookies()); albumErr == nil && album != nil {
+			publishTime = album.PublishTime
+		}
+	}
+
+	response.Success(w, map[string]interface{}{
+		"publishTime": publishTime,
+	}, "success")
+}
+
 func (h *Handler) Download(w http.ResponseWriter, r *http.Request) {
 	data := parseRequestData(r)
 	idInput := firstNonEmpty(data, "id", "url")
@@ -611,6 +945,89 @@ func (h *Handler) loadCookies() map[string]string {
 	return parsed
 }
 
+func (h *Handler) parseCompatRequestData(r *http.Request) (map[string]string, error) {
+	data := parseRequestData(r)
+
+	keyID := firstNonEmpty(data, "keyId")
+	keyToken := firstNonEmpty(data, "keyToken")
+	encryptedData := firstNonEmpty(data, "data")
+	if keyID == "" || keyToken == "" || encryptedData == "" {
+		return data, nil
+	}
+
+	key, ok := h.cryptoSessions.Lookup(keyID, keyToken)
+	if !ok {
+		return nil, errors.New("Invalid session or payload")
+	}
+
+	plain, err := decryptCompatPayload(encryptedData, key)
+	if err != nil {
+		return nil, errors.New("Invalid session or payload")
+	}
+
+	var payload map[string]interface{}
+	decoder := json.NewDecoder(bytes.NewReader(plain))
+	decoder.UseNumber()
+	if err := decoder.Decode(&payload); err != nil {
+		return nil, errors.New("Invalid session or payload")
+	}
+
+	result := map[string]string{}
+	for key, value := range payload {
+		result[key] = formatJSONValue(value)
+	}
+	return result, nil
+}
+
+func (h *Handler) compatSongDetail(song netease.SongDetailSong) map[string]interface{} {
+	artists := artistNames(song.Ar)
+	picURL := song.Al.PicURL
+	if picURL == "" && song.Al.Pic != 0 {
+		picURL = h.netease.GetPicURL(song.Al.Pic, 300)
+	}
+
+	return map[string]interface{}{
+		"id":        song.ID,
+		"name":      song.Name,
+		"free":      isSongFree(song),
+		"fee":       song.Fee,
+		"album":     song.Al.Name,
+		"albumId":   song.Al.ID,
+		"singer":    strings.Join(artists, "/"),
+		"artists":   artists,
+		"picimg":    picURL,
+		"picUrl":    picURL,
+		"duration":  formatCompatDuration(song.Dt),
+		"copyright": song.Copyright,
+		"time":      compatNow(),
+	}
+}
+
+func (h *Handler) compatSearchSong(song netease.SearchSong) map[string]interface{} {
+	artists := artistNames(song.Ar)
+	picURL := song.Al.PicURL
+	if picURL == "" && song.Al.Pic != 0 {
+		picURL = h.netease.GetPicURL(song.Al.Pic, 300)
+	}
+
+	return map[string]interface{}{
+		"id":        song.ID,
+		"name":      song.Name,
+		"album":     song.Al.Name,
+		"albumId":   song.Al.ID,
+		"singer":    strings.Join(artists, "/"),
+		"artist":    strings.Join(artists, "/"),
+		"artists":   artists,
+		"picimg":    picURL,
+		"picUrl":    picURL,
+		"duration":  formatCompatDuration(song.Dt),
+		"dt":        song.Dt,
+		"free":      isFeePlayable(song.Fee),
+		"fee":       song.Fee,
+		"copyright": song.Copyright,
+	}
+}
+
 func parseRequestData(r *http.Request) map[string]string {
 	result := map[string]string{}
 	if r == nil {
@@ -713,6 +1130,47 @@ func formatJSONValue(value interface{}) string {
 	default:
 		return fmt.Sprint(v)
 	}
+}
+
+func artistNames(artists []netease.Artist) []string {
+	result := make([]string, 0, len(artists))
+	for _, artist := range artists {
+		if artist.Name != "" {
+			result = append(result, artist.Name)
+		}
+	}
+	return result
+}
+
+func isSongFree(song netease.SongDetailSong) bool {
+	return isFeePlayable(song.Fee)
+}
+
+func isFeePlayable(fee int) bool {
+	return fee == 0 || fee == 8
+}
+
+func compatNow() string {
+	return time.Now().Format("2006/01/02 15:04:05")
+}
+
+func formatCompatDuration(ms int64) string {
+	if ms <= 0 {
+		return "0:00"
+	}
+	seconds := ms / 1000
+	minutes := seconds / 60
+	remaining := seconds % 60
+	return fmt.Sprintf("%d:%02d", minutes, remaining)
+}
+
+func firstPositiveInt64(values ...int64) int64 {
+	for _, value := range values {
+		if value > 0 {
+			return value
+		}
+	}
+	return 0
 }
 
 func formatFileSize(sizeBytes int64) string {

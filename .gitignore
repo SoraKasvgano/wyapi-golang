@@ -24,3 +24,4 @@ go.work.sum
 # env file
 .env
 /frontend/dist
+/dist
